@@ -71,6 +71,8 @@ def main():
 	except Exception as error:
 		print_error("Error: {0}".format(error))
 
+	s.close()
+
 def print_error(msg):
 	print "\033[1m\033[31m[-]\033[0m {0}".format(msg)
 	
