@@ -41,7 +41,7 @@ def main():
 	parser = argparse.ArgumentParser(description='Exploit HID VertX and Edge door controllers through command injection or the web interface', version='2.0')
 	group = parser.add_mutually_exclusive_group()
 	group.add_argument('-a', dest='action', help='Action to perform on VertX controller', choices=['discover', 'unlock', 'lock', 'download'], default='discover', required=False)
-	group.add_argument('-r', dest='raw', help='Raw Linux command, (example: ping -c 5 IP)', nargs='+', required=False)
+	group.add_argument('-raw', dest='raw', help='Raw Linux command, (example: ping -c 5 IP)', nargs='+', required=False)
 	parser.add_argument('-i', dest='ip', help='VertX controller IP address, (default: 255.255.255.255)', default='255.255.255.255', required=False)
 	parser.add_argument('-p', dest='port', help='VertX controller port, (default: 4070)', default=4070, type=int, required=False)
 	parser.add_argument('--username', help='VertX web interface username, (default: root)', default='root', required=False)
