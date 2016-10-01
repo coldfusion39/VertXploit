@@ -15,10 +15,13 @@ If the VertX controller's firmware has been recently updated, vertXploit will at
 Run `pip install -r requirements.txt` to install the required python modules.
  * [netifaces](https://bitbucket.org/al45tair/netifaces)
  * [python-nmap](https://bitbucket.org/xael/python-nmap)
+ * [requests](https://github.com/kennethreitz/requests)
+ * [tabulate](https://bitbucket.org/astanin/python-tabulate)
 
 
-## Usage ##
+## VertXploit Usage ##
 If the `-i IP` argument is not provided, vertXploit will attempt to discover all VertX access control system on the local network. If a controller is found, vertXploit will continue to execute the user supplied action that was provided with the `-a [discover, unlock, lock, download]` or `-raw` arguments.
+
 
 ### Discover ###
 Run vertXploit with just the `-a discover` argument to discover all VertX access control systems on the local network. To check a specific system and return detailed information, run vertXploit with the `-a discover` argument and an IP address `-i IP`.
@@ -52,6 +55,15 @@ Arbitrary Linux commands can be executed on a VertX access control system by usi
 Example:
 
 `./vertXploit.py -raw 'ping -c 5 10.1.10.39' -i 10.1.10.5`
+
+
+## VertXparse Usage ##
+After downloading the VertX 'IdentDB' and 'AccessDB', but using the the `-a download` argument, run vertXparse to dump the contents of the databases.
+
+Example:
+
+`./vertXparse.py`
+
 
 
 ## Command Injection ##
@@ -92,7 +104,8 @@ The script `/tmp/a` is then executed and both files are deleted. Below shows wha
 
 
 ## Resources ##
-* HeadlessZeke - https://github.com/headlesszeke/defcon24-demos
-* TrendMicro Blog - http://blog.trendmicro.com/let-get-door-remote-root-vulnerability-hid-door-controllers/
-* ZDI - http://www.zerodayinitiative.com/advisories/ZDI-16-223/
-* Other Work - http://nosedookie.blogspot.com/2011/07/identifying-and-querying-hid-vertx.html
+* [HeadlessZeke](https://github.com/headlesszeke/defcon24-demos) - Command injection vulnerability
+* [ZDI](http://www.zerodayinitiative.com/advisories/ZDI-16-223/) - Public disclosure
+* [TrendMicro Blog](http://blog.trendmicro.com/let-get-door-remote-root-vulnerability-hid-door-controllers/) - Blog on command injection vulnerability
+* [Brad Antoniewicz](http://nosedookie.blogspot.com/2011/07/hid-vertx-v2000-card-number-cache-tool.html) - Parsing card numbers from VertX cache
+* [Other Work](http://nosedookie.blogspot.com/2011/07/identifying-and-querying-hid-vertx.html) - VertX discovery commands
