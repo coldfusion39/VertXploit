@@ -20,7 +20,9 @@ Run `pip install -r requirements.txt` to install the required python modules.
 
 
 ## VertXploit Usage ##
-If the `-i IP` argument is not provided, vertXploit will attempt to discover all VertX access control system on the local network. If a controller is found, vertXploit will continue to execute the user supplied action that was provided with the `-a [discover, unlock, lock, download]` or `-raw` arguments.
+If the `-i IP` argument is not provided, vertXploit will attempt to discover all VertX access control system on the local network. If a controller is found, vertXploit will continue to execute the user supplied action that was provided with the `-a [discover, unlock, lock, download, dump]` or `-raw` arguments.
+
+Run `./vertXploit.py -h` to show the help menu, or `./vertXploit.py -a <ACTION> -h` to show help for a specific action.
 
 
 ### Discover ###
@@ -49,21 +51,20 @@ Example:
 `./vertXploit.py -a download -i 10.1.10.5`
 
 
+### Dump ###
+After downloading the 'IdentDB' and 'AccessDB' databases from a VertX controller, using the the `-a download` argument, run vertXploit `-a dump` to dump the contents of the databases.
+
+Example:
+
+`./vertXploit.py -a dump`
+
+
 ### Raw ###
 Arbitrary Linux commands can be executed on a VertX access control system by using the `-raw COMMAND` argument. Depending on the command being sent, the controller may not be able to execute the command because it is not installed (i.e. Python, PERL, ruby, etc). As a simple proof of concept, the Linux 'ping' command seems to work on all VertX models tested.
 
 Example:
 
 `./vertXploit.py -raw 'ping -c 5 10.1.10.39' -i 10.1.10.5`
-
-
-## VertXparse Usage ##
-After downloading the VertX 'IdentDB' and 'AccessDB', but using the the `-a download` argument, run vertXparse to dump the contents of the databases.
-
-Example:
-
-`./vertXparse.py`
-
 
 
 ## Command Injection ##
@@ -100,7 +101,6 @@ The script `/tmp/a` is then executed and both files are deleted. Below shows wha
 
 	# Run 'diagnostics_execute.cgi' script
 	/mnt/apps/web/cgi-bin/diagnostics_execute.cgi
-
 
 
 ## Resources ##
