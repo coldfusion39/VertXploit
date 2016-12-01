@@ -20,17 +20,27 @@
 
 
 class Database(object):
-	"""Interact with VertX IdentDB and AccessDB"""
-
+	"""
+	Parse VertX IdentDB and AccessDB databases.
+	Parameters
+	----------
+		database : str
+			Local directory contains the IdentDB and AccessDB databases.
+	"""
 	def __init__(self, path):
 		self.identdb_data = self._parse_db("{0}/IdentDB".format(path))
 		self.accessdb_data = self._parse_db("{0}/AccessDB".format(path))
 
-	# Parse card information from databases
 	def dump(self):
+		"""
+		Format card information from VertX databases for easy viewing.
+		Returns
+		----------
+			card_data : list
+		"""
 		card_data = []
 
-		# Get card info from IdentDB
+		# Get card information from IdentDB
 		for i_entry in self.identdb_data:
 			I_ENTRY_NUMBER = 16
 			I_CARD_ID = 10
@@ -65,8 +75,17 @@ class Database(object):
 
 		return card_data
 
-	# Pull info from databases
 	def _parse_db(self, database):
+		"""
+		Parse VertX databases.
+		Parameters
+		----------
+			database : str
+				Local file path of the IdentDB or AccessDB database.
+		Returns
+		----------
+			data : list
+		"""
 		data = []
 		counter = 1
 		entry = 0

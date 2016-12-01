@@ -20,19 +20,48 @@
 
 
 class Helpers(object):
-	"""Helper functions"""
-
+	"""
+	Helper functions
+	"""
 	def __init__(self):
 		pass
 
 	def print_error(self, message):
+		"""
+		Wrapper for error messages.
+		Parameters
+		----------
+			message : str
+				Message to display as an error.
+		"""
 		print("\033[1m\033[31m[-]\033[0m {0}".format(message))
 
 	def print_status(self, message):
+		"""
+		Wrapper for status messages.
+		Parameters
+		----------
+			message : str
+				Message to display as a status.
+		"""
 		print("\033[1m\033[34m[*]\033[0m {0}".format(message))
 
 	def print_good(self, message):
+		"""
+		Wrapper for success messages.
+		Parameters
+		----------
+			message : str
+				Message to display as a success.
+		"""
 		print("\033[1m\033[32m[+]\033[0m {0}".format(message))
 
 	def print_warn(self, message):
+		"""
+		Wrapper for warning messages.
+		Parameters
+		----------
+			message : str
+				Message to display as an warning.
+		"""
 		print("\033[1m\033[33m[!]\033[0m {0}".format(message))
