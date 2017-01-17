@@ -1,4 +1,4 @@
-# Copyright (c) 2016, Brandan Geise [coldfusion]
+# Copyright (c) 2017, Brandan Geise [coldfusion]
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -17,36 +17,32 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+import os
+
+from __future__ import print_function
+from __future__ import unicode_literals
 
 
 class Database(object):
 	"""
-	Parse VertX IdentDB and AccessDB databases.
-	Parameters
-	----------
-		database : str
-			Local directory contains the IdentDB and AccessDB databases.
+	Dump card information from VertX databases.
 	"""
 	def __init__(self, path):
-		self.identdb_data = self._parse_db("{0}/IdentDB".format(path))
-		self.accessdb_data = self._parse_db("{0}/AccessDB".format(path))
+		self.identdb = "{0}/IdentDB".format(os.path.abspath(path))
+		self.accessdb = "{0}/AccessDB".format(os.path.abspath(path))
 
 	def dump(self):
-		"""
-		Format card information from VertX databases for easy viewing.
-		Returns
-		----------
-			list
-		"""
 		card_data = []
 
 		# Get card information from IdentDB
-		for i_entry in self.identdb_data:
+		block_size = 28
+		identdb_data = self.parse_db(self.identdb, block_size)
+		for i_entry in identdb_data:
 			I_ENTRY_NUMBER = 16
 			I_CARD_ID = 10
 			I_ENABLED = 24
 
-			db_id = i_entry[(I_ENTRY_NUMBER * 2):(I_ENTRY_NUMBER * 2) + 2]
+			database_id = i_entry[(I_ENTRY_NUMBER * 2):(I_ENTRY_NUMBER * 2) + 2]
 			card_id = i_entry[0:I_CARD_ID * 2]
 			card_status = i_entry[I_ENABLED * 2:(I_ENABLED * 2) + 2]
 
@@ -59,59 +55,43 @@ class Database(object):
 				enabled = 'Unknown'
 
 			# Get door access from AccessDB
-			for a_entry in self.accessdb_data:
+			block_size = 44
+			accessdb_data = self.parse_db(self.accessdb, block_size)
+			for a_entry in accessdb_data:
 				A_ENTRY_NUMBER = 0
 				A_DOOR_ACCESS = 8
 
 				accessdb_id = a_entry[A_ENTRY_NUMBER * 2:(A_ENTRY_NUMBER * 2) + 2]
-				if accessdb_id == db_id:
+				if accessdb_id == database_id:
 					door_access = a_entry[A_DOOR_ACCESS * 2:(A_DOOR_ACCESS * 2) + 2]
 					break
 				else:
 					continue
 
-			database_row = [db_id, card_id, door_access, enabled]
+			database_row = [database_id, card_id, door_access, enabled]
 			card_data.append(database_row)
 
 		return card_data
 
-	def _parse_db(self, database):
-		"""
-		Parse VertX databases.
-		Parameters
-		----------
-			database : str
-				Local file path of the IdentDB or AccessDB database.
-		Returns
-		----------
-			list
-		"""
+	def parse_db(self, database, block):
 		data = []
 		counter = 1
 		entry = 0
 
 		with open(database, 'rb') as file_stream:
-			if 'IdentDB' in database:
-				block_size = 28
-			else:
-				block_size = 44
-
 			while entry < 255:
-				card_block = file_stream.read(block_size)
+				card_block = file_stream.read(block)
 				if card_block:
-					if (counter == 1) or (counter % block_size == 1):
+					if (counter == 1) or (counter % block == 1):
 						card_data = ''
 						entry += 1
 						counter = 1
-
 					for character in card_block:
 						card_data += "{0:0{1}X}".format(ord(character), 2)
 						counter += 1
-
 					data.append(card_data)
 				else:
 					break
-
 		file_stream.close()
 
 		return data

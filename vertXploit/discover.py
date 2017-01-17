@@ -1,4 +1,4 @@
-# Copyright (c) 2016, Brandan Geise [coldfusion]
+# Copyright (c) 2017, Brandan Geise [coldfusion]
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -17,51 +17,37 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+import nmap
+
+from __future__ import print_function
+from __future__ import unicode_literals
+
+from main import VertXController
 
 
-class Helpers(object):
+class Discover(VertXController):
 	"""
-	Helper functions
+	Send discover request to local broadcast network or scan IP range for VertX controllers.
 	"""
-	def __init__(self):
-		pass
+	def broadcast(self):
+		controllers = []
 
-	def print_error(self, message):
-		"""
-		Wrapper for error messages.
-		Parameters
-		----------
-			str
-				Message to display as an error.
-		"""
-		print("\033[1m\033[31m[-]\033[0m {0}".format(message))
+		response = self.send_command(self.DISCOVER, ip=self.ip)
+		if response:
+			controllers.append([response[1][0], '4070', response[0].split(';')[2]])
 
-	def print_status(self, message):
-		"""
-		Wrapper for status messages.
-		Parameters
-		----------
-			str
-				Message to display as a status.
-		"""
-		print("\033[1m\033[34m[*]\033[0m {0}".format(message))
+		return controllers
 
-	def print_good(self, message):
-		"""
-		Wrapper for success messages.
-		Parameters
-		----------
-			str
-				Message to display as a success.
-		"""
-		print("\033[1m\033[32m[+]\033[0m {0}".format(message))
+	def scan(self):
+		controllers = []
 
-	def print_warn(self, message):
-		"""
-		Wrapper for warning messages.
-		Parameters
-		----------
-			str
-				Message to display as an warning.
-		"""
-		print("\033[1m\033[33m[!]\033[0m {0}".format(message))
+		nm = nmap.PortScanner()
+		nm.scan(self.ip, arguments='-n -sS -T2 --open -Pn -p4050')
+		for host in nm.all_hosts():
+			if nm[host].has_tcp(4050) and nm[host]['tcp'][4050]['state'] == 'open':
+				nmap_ip = nm[host]['addresses']['ipv4']
+				response = self.send_command(self.DISCOVER, ip=nmap_ip)
+				if response:
+					controllers.append([response[1][0], '4050', response[0].split(';')[2]])
+
+		return controllers
